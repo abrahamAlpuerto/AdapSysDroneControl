@@ -1,8 +1,8 @@
 import pybullet as p
 import time
 import torch
-from rl.DQN.dql_quad_env import DQLQuadEnv
-from rl.DQN.dql_agent import DQLAgent
+from dql_quad_env import DQLQuadEnv
+from dql_agent import DQLAgent
 
 def watch_trained_drone():
     print("--- Loading Environment with GUI ---")
