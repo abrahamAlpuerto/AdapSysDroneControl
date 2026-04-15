@@ -15,8 +15,11 @@ class DQN(nn.Module):
         self.fc3 = nn.Linear(128, action_size)
 
     def forward(self, x):
+        # print(x.shape)
         x = self.relu(self.fc1(x))
+        # print(x)
         x = self.relu(self.fc2(x))
+        # print(x)
         return self.fc3(x)
 
 

@@ -1,13 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from dql_quad_env import DQLQuadEnv
-from dql_agent import DQLAgent
+from rl.DQN.dql_quad_env import DQLQuadEnv
+from rl.DQN.dql_agent import DQLAgent
 import torch
 
 # --- Hyperparameters ---
-EPISODES = 1500
-MAX_STEPS = 1000 # ~4 seconds at 240Hz
-CURRICULUM_SWITCH = 500 # Episode to introduce the 50% power loss
+EPISODES = 1000
+MAX_STEPS = 2000 # ~4 seconds at 240Hz
+CURRICULUM_SWITCH = 3000 # Episode to introduce the 50% power loss
 
 def train():
     env = DQLQuadEnv()
