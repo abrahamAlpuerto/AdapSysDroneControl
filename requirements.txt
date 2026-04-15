@@ -1,0 +1,12 @@
+gym-pybullet-drones
+pybullet
+stable-baselines3
+matplotlib
+numpy
+torch
+gymnasium
+setuptools==57.5.0
+scipy
+transforms3d
+control
+pytest
