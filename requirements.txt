@@ -10,3 +10,4 @@ scipy
 transforms3d
 control
 pytest
+tensorboard
