@@ -107,9 +107,9 @@ class SupervisorEnv(gym.Env):
         # Note: FailureAviary returns 28 dims in _computeObs
         aviary_obs = self.env._computeObs()[0]
         
-        # Trigger failure (Complete failure now)
+        # Trigger failure (try for 30% loss)
         if t >= self.failure_time and np.all(self.env.failure_mask[0] == 1.0):
-            self.env.fail_motor(0, self.failed_motor_idx, failed_power=0.0)
+            self.env.fail_motor(0, self.failed_motor_idx, failed_power=0.7)
             
         # Compute Control
         action_rpms, pos_e, yaw_e = self.ctrl.computeControl(

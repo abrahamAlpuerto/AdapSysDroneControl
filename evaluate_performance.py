@@ -132,7 +132,7 @@ def evaluate(failed_power=0.8):
     results = {}
     results['Baseline'] = run_simulation("Baseline", failed_power=failed_power)
     results['STR'] = run_simulation("STR", failed_power=failed_power)
-    # results['Hybrid'] = run_simulation("Hybrid", best_model_path, failed_power=failed_power) # Uncomment when trained
+    results['Hybrid'] = run_simulation("Hybrid", best_model_path, failed_power=failed_power)
     
     # Plotting
     plt.figure(figsize=(12, 12))

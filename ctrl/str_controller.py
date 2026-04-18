@@ -142,10 +142,10 @@ class STRController(DSLPIDControl):
         #     # Increase Thrust slightly to compensate for lost motor
         #     desired_efforts[0] *= 1.1
             
-        # # Apply RL-tuned multipliers on top of auto-dampening
-        # desired_efforts[0] *= self.gain_multipliers[0]
-        # desired_efforts[1:3] *= self.gain_multipliers[1]
-        # desired_efforts[3] *= self.gain_multipliers[3]
+        # Apply RL-tuned multipliers on top of auto-dampening
+        desired_efforts[0] *= self.gain_multipliers[0]
+        desired_efforts[1:3] *= self.gain_multipliers[1]
+        desired_efforts[3] *= self.gain_multipliers[3]
         
         B_hat = self._compute_B(k_hat)
         
@@ -193,7 +193,7 @@ class STRController(DSLPIDControl):
         # Store for next RLS update (RLS should see the actual smoothed command)
         self.last_rpms = smoothed_rpms.copy()
         
-        return smoothed_rpms, pos_e, yaw_e, nominal_rpms
+        return smoothed_rpms, pos_e, yaw_e
 
     def get_rls_estimates(self):
         return self.rls.get_estimates()
