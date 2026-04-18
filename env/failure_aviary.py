@@ -50,8 +50,10 @@ class FailureAviary(CtrlAviary):
         # Track last velocity to compute acceleration
         self.last_vel = np.zeros((self.NUM_DRONES, 3))
         self.accel = np.zeros((self.NUM_DRONES, 3))
+        self.last_ang_vel = np.zeros((self.NUM_DRONES, 3))
+        self.ang_accel = np.zeros((self.NUM_DRONES, 3))
 
-    def fail_motor(self, drone_index: int, motor_index: int):
+    def fail_motor(self, drone_index: int, motor_index: int, failed_power: float=0.0):
         """Triggers a failure in a specific motor of a specific drone.
 
         Parameters
@@ -60,12 +62,14 @@ class FailureAviary(CtrlAviary):
             Index of the drone (0 to NUM_DRONES-1).
         motor_index : int
             Index of the motor (0 to 3).
+        failed_power : float
+            The power left available after the motor failed (0.0 to 1.0).
         """
-        if 0 <= drone_index < self.NUM_DRONES and 0 <= motor_index < 4:
-            self.failure_mask[drone_index, motor_index] = 0.0
-            print(f"[INFO] Motor {motor_index} of drone {drone_index} failed!")
+        if 0 <= drone_index < self.NUM_DRONES and 0 <= motor_index < 4 and 0.0 <= failed_power <= 1.0:
+            self.failure_mask[drone_index, motor_index] = failed_power
+            print(f"[INFO] Motor {motor_index} of drone {drone_index} failed! ({failed_power*100:.2f}% power left)")
         else:
-            print(f"[ERROR] Invalid drone or motor index: {drone_index}, {motor_index}")
+            print(f"[ERROR] Invalid drone, motor index, or failed power left: {drone_index}, {motor_index}, {failed_power}")
 
     def _preprocessAction(self, action):
         """Overrides _preprocessAction to apply the failure mask.
@@ -89,21 +93,22 @@ class FailureAviary(CtrlAviary):
         return masked_action
 
     def _observationSpace(self):
-        """Overrides _observationSpace to include the failure mask and z-acceleration.
+        """Overrides _observationSpace to include the failure mask, z-acceleration and angular accelerations.
 
         Returns
         -------
         spaces.Box
-            The extended observation space (20 + 4 + 1 = 25 dimensions per drone).
+            The extended observation space (20 + 4 + 1 + 3 = 28 dimensions per drone).
         """
         obs_space = super()._observationSpace()
         low = obs_space.low
         high = obs_space.high
         
         # Append 4 dimensions for the failure mask (range [0, 1])
-        # And 1 dimension for z-acceleration
-        low_ext = np.array([[0., 0., 0., 0., -np.inf] for _ in range(self.NUM_DRONES)])
-        high_ext = np.array([[1., 1., 1., 1., np.inf] for _ in range(self.NUM_DRONES)])
+        # 1 dimension for z-acceleration
+        # 3 dimensions for angular accelerations (roll, pitch, yaw)
+        low_ext = np.array([[0., 0., 0., 0., -np.inf, -np.inf, -np.inf, -np.inf] for _ in range(self.NUM_DRONES)])
+        high_ext = np.array([[1., 1., 1., 1., np.inf, np.inf, np.inf, np.inf] for _ in range(self.NUM_DRONES)])
         
         new_low = np.hstack([low, low_ext])
         new_high = np.hstack([high, high_ext])
@@ -111,25 +116,35 @@ class FailureAviary(CtrlAviary):
         return spaces.Box(low=new_low, high=new_high, dtype=np.float32)
 
     def _computeObs(self):
-        """Overrides _computeObs to include the failure mask and z-acceleration.
+        """Overrides _computeObs to include the failure mask, z-acceleration and angular accelerations.
 
         Returns
         -------
         ndarray
-            An ndarray of shape (NUM_DRONES, 25) with the extended state.
+            An ndarray of shape (NUM_DRONES, 28) with the extended state.
         """
         # Base observation (NUM_DRONES, 20)
         obs = super()._computeObs()
         
-        # Update acceleration: (v_new - v_old) / dt
-        # obs[:, 10:13] is velocity (VX, VY, VZ)
+        # Update linear acceleration with LPF (Low pass filter)
         current_vel = obs[:, 10:13]
-        self.accel = (current_vel - self.last_vel) / self.CTRL_TIMESTEP
+        new_accel = (current_vel - self.last_vel) / self.CTRL_TIMESTEP
+        self.accel = 0.02 * new_accel + 0.98 * self.accel # LPF
         self.last_vel = current_vel.copy()
         
-        z_accel = self.accel[:, 2:3] # (NUM_DRONES, 1)
+        # Convert Z-accel to body frame (simplified for vertical RLS)
+        rpy = obs[:, 7:10]
+        cos_roll = np.cos(rpy[:, 0])
+        cos_pitch = np.cos(rpy[:, 1])
+        z_accel_body = (self.accel[:, 2] + self.G) / (cos_roll * cos_pitch + 1e-6) - self.G
         
-        # Concatenate with failure mask (NUM_DRONES, 4) and z_accel (NUM_DRONES, 1)
-        extended_obs = np.hstack([obs, self.failure_mask, z_accel])
+        # Update angular acceleration with LPF
+        current_ang_vel = obs[:, 13:16]
+        new_ang_accel = (current_ang_vel - self.last_ang_vel) / self.CTRL_TIMESTEP
+        self.ang_accel = 0.2 * new_ang_accel + 0.8 * self.ang_accel # LPF
+        self.last_ang_vel = current_ang_vel.copy()
+        
+        # Concatenate with failure mask (NUM_DRONES, 4), z_accel (NUM_DRONES, 1) and ang_accel (NUM_DRONES, 3)
+        extended_obs = np.hstack([obs, self.failure_mask, z_accel_body.reshape(-1, 1), self.ang_accel])
         
         return extended_obs
