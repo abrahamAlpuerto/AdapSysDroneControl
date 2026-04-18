@@ -10,9 +10,9 @@ class RLSEstimator:
                  theta_init=None,
                  kf=3.16e-10,
                  km=7.94e-12,
-                 arm_length=0.0397,
+                 arm_length=0.099,
                  mass=0.027,
-                 inertia=np.array([2.3951e-5, 2.3951e-5, 3.2347e-5])):
+                 inertia=np.array([0.0023, 0.0023, 0.004])):
         """
         Initialize the RLS estimator.
 
@@ -76,6 +76,7 @@ class RLSEstimator:
         
         # Regressor Phi (4, n)
         phi = np.zeros((4, self.n))
+
         # Use a scaling factor for RPMs to keep Phi entries near order 1-100
         rpm_scale = 10000.0
         # Clip RPMs used for estimation to prevent explosion
@@ -87,14 +88,17 @@ class RLSEstimator:
         # Phi entries matching DSLPIDControl / MIXER_MATRIX circular layout:
         # FR: 0, RR: 1, RL: 2, FL: 3
         phi[0, :] = (kf_scaled / self.M) * rpm_norm2
+
         phi[1, 0] = - (self.l_const * kf_scaled / self.I[0]) * rpm_norm2[0]
         phi[1, 1] = - (self.l_const * kf_scaled / self.I[0]) * rpm_norm2[1]
         phi[1, 2] = + (self.l_const * kf_scaled / self.I[0]) * rpm_norm2[2]
         phi[1, 3] = + (self.l_const * kf_scaled / self.I[0]) * rpm_norm2[3]
+
         phi[2, 0] = - (self.l_const * kf_scaled / self.I[1]) * rpm_norm2[0]
         phi[2, 1] = + (self.l_const * kf_scaled / self.I[1]) * rpm_norm2[1]
         phi[2, 2] = + (self.l_const * kf_scaled / self.I[1]) * rpm_norm2[2]
         phi[2, 3] = - (self.l_const * kf_scaled / self.I[1]) * rpm_norm2[3]
+        
         phi[3, 0] = - (km_scaled / self.I[2]) * rpm_norm2[0]
         phi[3, 1] = + (km_scaled / self.I[2]) * rpm_norm2[1]
         phi[3, 2] = - (km_scaled / self.I[2]) * rpm_norm2[2]
@@ -102,18 +106,18 @@ class RLSEstimator:
         
         # Innovation
         prediction = phi @ self.theta.reshape(-1, 1)
-        epsilon = y - prediction
+        epsilon = (y - prediction)*0.9
         self.last_residual = epsilon.flatten()
         
         # Weighted Update
-        v_thrust = 100.0 
-        v_moment = 1.0   
+        v_thrust = 0.005
+        v_moment = 1
         V = np.diag([v_thrust, v_moment, v_moment, v_moment])
         
         try:
             # Gain K = P * Phi^T * inv(lambda * V + Phi * P * Phi^T)
             S = self.lam * V + phi @ self.P @ phi.T
-            K = self.P @ phi.T @ np.linalg.inv(S)
+            K = self.P @ phi.T @ np.linalg.pinv(S)
             
             # Update theta
             new_theta = self.theta + (K @ epsilon).flatten()
@@ -125,7 +129,7 @@ class RLSEstimator:
             if np.any(np.isnan(new_theta)) or np.any(np.isnan(new_P)):
                 self.P = np.eye(self.n) * 1.0 # Reset covariance
                 return self.theta
-            
+        
             self.theta = new_theta
             self.P = new_P
             
@@ -134,8 +138,8 @@ class RLSEstimator:
             self.P = np.eye(self.n) * 1.0
             return self.theta
         
-        # Regularization: small leak towards 1.0 for stability
-        self.theta = 0.999 * self.theta + 0.001 * 1.0
+        # Regularization: small leak towards 1.2 for stability
+        self.theta = 0.998 * self.theta + 0.002 * 1.2
         
         # Clip theta to [0, 1.2] 
         self.theta = np.clip(self.theta, 0.0, 1.2)

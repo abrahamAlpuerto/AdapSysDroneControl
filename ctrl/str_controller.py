@@ -58,7 +58,7 @@ class STRController(DSLPIDControl):
         kf = self.rls.kf
         km = self.rls.km
         l_const = self.rls.l_const
-        k = effectiveness
+        k = effectiveness**2
         
         B = np.zeros((4, 4))
         # 0:FR (+x, -y, CCW), 1:RR (-x, -y, CW), 2:RL (-x, +y, CCW), 3:FL (+x, +y, CW)
@@ -150,39 +150,50 @@ class STRController(DSLPIDControl):
         B_hat = self._compute_B(k_hat)
         
         # Weighted Control Allocation
-        # We solve: min ||W_half(B*rpm2 - efforts)||^2 + ||R_half*rpm2||^2
-        # V is the output weight (how much we care about each error)
+        # W is the output weight (how much we care about each error)
         yaw_weight = 1 if min_k > 0.1 else 0.001 
-        W = np.diag([1.0, 10.0, 10.0, yaw_weight]) 
+        W = np.diag([1, 1.2, 1.2, 1]) 
         W_half = np.sqrt(W)
-        
-        # R is the input weight (cost of using each motor)
-        # We penalize using a motor proportional to its failure
-        # If k=1, cost is low. If k=0.1, cost is very high.
-        # r_i = 0.01 + (1.0 - k_i) * 10.0
-        r_coeffs = np.clip(0.01 + (1.0 - k_hat) * 100,10,120.0)
+
+        # Trying to weigh desired effort directly
+        desired_efforts = W @ desired_efforts
+
+
+        # -- This is a version without R --
+        # Solve [W_half*B] * rpm2 = W_half*efforts
+        new_rpm2 = np.linalg.pinv(W_half @ B_hat) @ (W_half @ desired_efforts)
+
+        # -- This is a version with R --
+        # We solve: min ||W_half(B*rpm2 - efforts)||^2 + ||R_half*rpm2||^2
+        # # R is the input weight (cost of using each motor)
+        # # We penalize using a motor proportional to its failure
+        # # If k=1, cost is low. If k=0.1, cost is very high.
+        # # r_i = 0.01 + (1.0 - k_i) * 10.0
+        # r_coeffs = np.clip(0.01 + (1.0 - k_hat) * 10,1,120.0)
         # R_half = np.diag(np.sqrt(r_coeffs) * 1e-11) # Scale R to match B_hat's magnitude
-        R_half = np.diag(np.ndarray([1.0,1.0,1.0,1.0]) * 1e-11);
         
-        # Solve using Augmented Least Squares:
-        # [W_half*B; R_half] * rpm2 = [W_half*efforts; 0]
-        A_aug = np.vstack([W_half @ B_hat, R_half])
-        b_aug = np.concatenate([W_half @ desired_efforts, np.zeros(4)])
+        # # Solve using Augmented Least Squares:
+        # # [W_half*B; R_half] * rpm2 = [W_half*efforts; 0]
+        # A_aug = np.vstack([W_half @ B_hat, R_half])
+        # b_aug = np.concatenate([W_half @ desired_efforts, np.zeros(4)])
         
-        new_rpm2 = np.linalg.pinv(A_aug, rcond=1e-8) @ b_aug
+        # new_rpm2 = np.linalg.pinv(A_aug, rcond=1e-8) @ b_aug
+
+        # -- This is a version without W and R --
+        # new_rpm2 = np.linalg.pinv(B_hat) @ desired_efforts
         
         new_rpm2 = np.clip(new_rpm2, 0, 40000**2)
         adapted_rpms = np.sqrt(new_rpm2)
         
         # 5. Low-pass filter the output RPMs to reduce oscillations
-        # alpha_action = 0.5 provides a good balance between smoothing and lag
-        alpha_action = 0.5
+        # alpha_action = 0.9 provides a good balance between smoothing and lag
+        alpha_action = 0.9
         smoothed_rpms = alpha_action * adapted_rpms + (1.0 - alpha_action) * self.last_rpms
         
         # Store for next RLS update (RLS should see the actual smoothed command)
         self.last_rpms = smoothed_rpms.copy()
         
-        return smoothed_rpms, pos_e, yaw_e
+        return smoothed_rpms, pos_e, yaw_e, nominal_rpms
 
     def get_rls_estimates(self):
         return self.rls.get_estimates()

@@ -7,8 +7,8 @@ from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 def test_str_adaptation():
     # Simulation parameters
-    DURATION_SEC = 15
-    GUI = True
+    DURATION_SEC = 10
+    GUI = False
     NUM_DRONES = 1
     CTRL_FREQ = 240
     FAILURE_TIME = 5.0 # seconds
@@ -46,7 +46,9 @@ def test_str_adaptation():
         'z_accel': [],
         'ang_accel': [],
         'k_estimates': [],
-        'rpms': []
+        'k_true': [],
+        'rpms': [],
+        'norminal_rpms': []
     }
     
     print(f"Starting simulation for {DURATION_SEC}s...")
@@ -70,10 +72,8 @@ def test_str_adaptation():
             print(f"--- Motor Failure Injected at t={t:.2f}s (Power left: {FAILED_POWER*100:.1f}%) ---")
         
         # Compute control
-        # manual_k override to test redistribution logic in isolation                                                                                                          │
         k_ground_truth = env.failure_mask[0].copy()
-
-        action_rpms, pos_e, yaw_e = ctrl.computeControl(control_timestep=1.0/CTRL_FREQ,
+        action_rpms, pos_e, yaw_e, norminal_rpms = ctrl.computeControl(control_timestep=1.0/CTRL_FREQ,
                                                         cur_pos=cur_pos,
                                                         cur_quat=cur_quat,
                                                         cur_vel=cur_vel,
@@ -82,10 +82,13 @@ def test_str_adaptation():
                                                         observed_accel_z=z_accel,
                                                         observed_ang_accel=ang_accel,
                                                         mass=drone_mass,
-                                                        manual_k=k_ground_truth)
+                                                        manual_k=None)
         
         # Step environment
         obs, reward, terminated, truncated, info = env.step(action_rpms.reshape(1, 4))
+
+        # Get true motor efficiency for plotting
+        k_ground_truth = env.failure_mask[0].copy()
         
         # Log data
         history['time'].append(t)
@@ -93,8 +96,12 @@ def test_str_adaptation():
         history['rpy'].append(cur_rpy.copy())
         history['z_accel'].append(z_accel)
         history['ang_accel'].append(ang_accel.copy())
+        k_est = ctrl.get_rls_estimates().copy()
         history['k_estimates'].append(ctrl.get_rls_estimates().copy())
+        k_t = k_ground_truth.T.copy()
+        history['k_true'].append(k_ground_truth.T.copy())
         history['rpms'].append(action_rpms.copy())
+        history['norminal_rpms'].append(norminal_rpms.copy())
         
         # Record B-matrix
         k_hat = ctrl.get_rls_estimates()
@@ -117,12 +124,14 @@ def test_str_adaptation():
     history['z'] = np.array(history['z'])
     history['rpy'] = np.array(history['rpy'])
     history['k_estimates'] = np.array(history['k_estimates'])
+    history['k_true'] = np.array(history['k_true'])
     history['rpms'] = np.array(history['rpms'])
+    history['norminal_rpms'] = np.array(history['norminal_rpms'])
     
     plt.figure(figsize=(12, 12))
     
     # Plot Altitude
-    plt.subplot(4, 1, 1)
+    plt.subplot(5, 1, 1)
     plt.plot(history['time'], history['z'], label='Altitude (z)')
     plt.axvline(x=FAILURE_TIME, color='r', linestyle='--', label='Failure')
     plt.ylabel('Height (m)')
@@ -131,7 +140,7 @@ def test_str_adaptation():
     plt.grid(True)
     
     # Plot Attitude (Roll/Pitch)
-    plt.subplot(4, 1, 2)
+    plt.subplot(5, 1, 2)
     plt.plot(history['time'], np.degrees(history['rpy'][:, 0]), label='Roll')
     plt.plot(history['time'], np.degrees(history['rpy'][:, 1]), label='Pitch')
     plt.plot(history['time'], np.degrees(history['rpy'][:, 2]), label='Yaw')
@@ -141,20 +150,32 @@ def test_str_adaptation():
     plt.grid(True)
     
     # Plot RLS Estimates
-    plt.subplot(4, 1, 3)
+    plt.subplot(5, 1, 3)
+    colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red']
     for i in range(4):
-        plt.plot(history['time'], history['k_estimates'][:, i], label=f'Motor {i}')
+        plt.plot(history['time'], history['k_estimates'][:, i], label=f'Motor {i}', color=colors[i])
+        plt.plot(history['time'], history['k_true'][:, i], label=f'True: motor {i}', color=colors[i], linestyle=':')
     plt.axvline(x=FAILURE_TIME, color='r', linestyle='--')
     plt.ylabel('Effectiveness (k_hat)')
     plt.legend()
     plt.grid(True)
     
     # Plot RPMs
-    plt.subplot(4, 1, 4)
+    plt.subplot(5, 1, 4)
     for i in range(4):
         plt.plot(history['time'], history['rpms'][:, i], label=f'Motor {i}')
     plt.axvline(x=FAILURE_TIME, color='r', linestyle='--')
     plt.ylabel('RPM')
+    plt.xlabel('Time (s)')
+    plt.legend()
+    plt.grid(True)
+
+    # Plot norminal RPMs
+    plt.subplot(5, 1, 5)
+    for i in range(4):
+        plt.plot(history['time'], history['norminal_rpms'][:, i], label=f'Motor {i}')
+    plt.axvline(x=FAILURE_TIME, color='r', linestyle='--')
+    plt.ylabel('Norminal RPM')
     plt.xlabel('Time (s)')
     plt.legend()
     plt.grid(True)
