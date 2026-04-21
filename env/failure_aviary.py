@@ -171,9 +171,9 @@ class FailureAviary(CtrlAviary):
         if self.GUI:
             if np.any(self.failure_mask != 1.0):
                 # If failure happened, use different zoom
-                cameraDistance = 0.8
+                cameraDistance = 0.7
             else:
-                cameraDistance = 1
+                cameraDistance = 0.7
             p.resetDebugVisualizerCamera(cameraDistance=cameraDistance,
                                             cameraYaw=-30,
                                             cameraPitch=-30,

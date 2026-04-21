@@ -8,13 +8,14 @@ from ctrl.str_controller import STRController
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
+FAILURE_TIME = 2.0
+
 def run_simulation(controller_type, model_path=None, failed_power=0.8):
     # Simulation parameters
-    DURATION_SEC = 15
+    DURATION_SEC = 5
     GUI = False
     NUM_DRONES = 1
     CTRL_FREQ = 240
-    FAILURE_TIME = 5.0
     TARGET_POS = np.array([0, 0, 1.0])
     
     # Instantiate environment
@@ -49,7 +50,8 @@ def run_simulation(controller_type, model_path=None, failed_power=0.8):
         'z': [],
         'rpy': [],
         'residual': [],
-        'k_hat': []
+        'k_hat': [],
+        'rpms': []
     }
     
     print(f"Running simulation for {controller_type} (Power left: {failed_power*100:.1f}%)...")
@@ -60,7 +62,7 @@ def run_simulation(controller_type, model_path=None, failed_power=0.8):
         
         # Trigger failure: partial or total failure
         if t >= FAILURE_TIME and np.all(env.failure_mask[0] == 1.0):
-            env.fail_motor(0, 1, failed_power=failed_power)
+            env.fail_motor(0, 0, failed_power=failed_power)
             
             
         # RL action for Hybrid
@@ -111,6 +113,7 @@ def run_simulation(controller_type, model_path=None, failed_power=0.8):
         history['time'].append(t)
         history['z'].append(cur_obs[2])
         history['rpy'].append(cur_obs[7:10])
+        history['rpms'].append(action_rpms)
         if controller_type != "Baseline":
             history['residual'].append(ctrl.rls.get_residual())
             history['k_hat'].append(ctrl.rls.get_estimates().copy())
@@ -124,6 +127,7 @@ def run_simulation(controller_type, model_path=None, failed_power=0.8):
     env.close()
     history['rpy'] = np.array(history['rpy'])
     history['k_hat'] = np.array(history['k_hat'])
+    history['rpms'] = np.array(history['rpms'])
     return history
 
 def evaluate(failed_power=0.8):
@@ -132,42 +136,60 @@ def evaluate(failed_power=0.8):
     results = {}
     results['Baseline'] = run_simulation("Baseline", failed_power=failed_power)
     results['STR'] = run_simulation("STR", failed_power=failed_power)
-    results['Hybrid'] = run_simulation("Hybrid", best_model_path, failed_power=failed_power)
+    # results['Hybrid'] = run_simulation("Hybrid", best_model_path, failed_power=failed_power)
     
     # Plotting
-    plt.figure(figsize=(12, 12))
+    plt.figure(figsize=(12, 8))
     
     # Altitude comparison
-    plt.subplot(3, 1, 1)
+    plt.subplot(2, 1, 1)
     for name, hist in results.items():
         plt.plot(hist['time'], hist['z'], label=name)
-    plt.axvline(x=5.0, color='r', linestyle='--', label='Failure')
+    plt.axvline(x=FAILURE_TIME, color='r', linestyle='--', label=f'{(1-failed_power)*100:.0f}% Motor Fault Injected')
     plt.ylabel('Altitude (m)')
-    plt.title(f'Performance Comparison: Motor 1 Failure (Power left: {failed_power*100:.1f}%)')
+    plt.title(f'Altitude Recovery Comparison')
     plt.legend()
     plt.grid(True)
     
     # Roll comparison
-    plt.subplot(3, 1, 2)
+    plt.subplot(2, 1, 2)
     for name, hist in results.items():
         plt.plot(hist['time'], np.degrees(hist['rpy'][:, 0]), label=f'{name} Roll')
-    plt.axvline(x=5.0, color='r', linestyle='--')
-    plt.ylabel('Roll Angle (deg)')
+    plt.axvline(x=FAILURE_TIME, color='r', linestyle='--', label='')
+    plt.ylabel('Roll Angle (degrees)')
+    plt.title(f'Attitude Stability Comparison')
     plt.legend()
     plt.grid(True)
     
-    # Pitch comparison
-    plt.subplot(3, 1, 3)
-    for name, hist in results.items():
-        plt.plot(hist['time'], np.degrees(hist['rpy'][:, 1]), label=f'{name} Pitch')
-    plt.axvline(x=5.0, color='r', linestyle='--')
-    plt.ylabel('Pitch Angle (deg)')
-    plt.xlabel('Time (s)')
-    plt.legend()
-    plt.grid(True)
+    # # Pitch comparison
+    # plt.subplot(3, 1, 3)
+    # for name, hist in results.items():
+    #     plt.plot(hist['time'], np.degrees(hist['rpy'][:, 1]), label=f'{name} Pitch')
+    # plt.axvline(x=FAILURE_TIME, color='r', linestyle='--')
+    # plt.ylabel('Pitch Angle (deg)')
+    # plt.xlabel('Time (s)')
+    # plt.legend()
+    # plt.grid(True)
     
     plt.tight_layout()
-    plt.savefig('performance_comparison.png')
+    plt.savefig('performance_comparison_1.png')
+
+    plt.figure(figsize=(12, 8))
+
+    # RPM comparison
+    for name, hist in results.items():
+        if name == "STR":
+            for i in range(4):
+                plt.plot(hist['time'], hist['rpms'][:, i], label=f'Motor {i}')
+    plt.axvline(x=FAILURE_TIME, color='r', linestyle='--', label=f'{(1-failed_power)*100:.0f}% Power Loss Injected')
+    plt.ylabel('Motor RPM')
+    plt.title(f'Control Output (STR)')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig('performance_comparison_2.png')
+
     print("Evaluation complete. Results saved to performance_comparison.png")
 
 if __name__ == "__main__":

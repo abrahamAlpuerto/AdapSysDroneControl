@@ -7,12 +7,12 @@ from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 def test_str_adaptation():
     # Simulation parameters
-    DURATION_SEC = 10
-    GUI = True
+    DURATION_SEC = 5
+    GUI = False
     NUM_DRONES = 1
     CTRL_FREQ = 240
-    FAILURE_TIME = 3.0 # seconds
-    FAILED_POWER = 0 # 0.0 for complete failure, 0.8 for 20% loss
+    FAILURE_TIME = 2.0 # seconds
+    FAILED_POWER = 0.8 # 0.0 for complete failure, 0.8 for 20% loss
     
     # Instantiate environment
     env = FailureAviary(gui=GUI, 
@@ -33,7 +33,7 @@ def test_str_adaptation():
                          inertia=env.J)
     
     # Target trajectory: Hover at 1.0m
-    target_pos = np.array([0, 0, 1.5])
+    target_pos = np.array([0, 0, 1.0])
     
     # Reset environment
     obs, info = env.reset()
@@ -67,7 +67,7 @@ def test_str_adaptation():
         
         # Trigger failure: partial or complete failure of motor 1
         if t >= FAILURE_TIME and np.all(env.failure_mask[0] == 1.0):
-            env.fail_motor(drone_index=0, motor_index=1, failed_power=FAILED_POWER)
+            env.fail_motor(drone_index=0, motor_index=0, failed_power=FAILED_POWER)
             print(f"--- Motor Failure Injected at t={t:.2f}s (Power left: {FAILED_POWER*100:.1f}%) ---")
         
         # Compute control
@@ -128,19 +128,19 @@ def test_str_adaptation():
     history['k_true'] = np.array(history['k_true'])
     history['rpms'] = np.array(history['rpms'])
     
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(12, 9))
     
     # Plot Altitude
-    plt.subplot(2, 1, 1)
+    plt.subplot(4, 1, 1)
     plt.plot(history['time'], history['z'], label='Altitude (z)')
     plt.axvline(x=FAILURE_TIME, color='r', linestyle='--', label='Failure')
     plt.ylabel('Height (m)')
-    plt.title('Altitude recovery comparison')
+    plt.title(f'STR Controller Performance With {(1-FAILED_POWER)*100:.0f}% Power Loss')
     plt.legend()
     plt.grid(True)
     
     # Plot Attitude (Roll/Pitch)
-    plt.subplot(2, 1, 2)
+    plt.subplot(4, 1, 2)
     plt.plot(history['time'], np.degrees(history['rpy'][:, 0]), label='Roll')
     plt.plot(history['time'], np.degrees(history['rpy'][:, 1]), label='Pitch')
     plt.plot(history['time'], np.degrees(history['rpy'][:, 2]), label='Yaw')
@@ -148,25 +148,20 @@ def test_str_adaptation():
     plt.ylabel('Angle (deg)')
     plt.legend()
     plt.grid(True)
-
-    plt.tight_layout()
-    plt.savefig('str_test_results_1.png')
-
-    plt.figure(figsize=(12, 6))
     
     # Plot RLS Estimates
-    plt.subplot(2, 1, 1)
+    plt.subplot(4, 1, 3)
     colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red']
     for i in range(4):
         plt.plot(history['time'], history['k_estimates'][:, i], label=f'Motor {i}', color=colors[i])
-        plt.plot(history['time'], history['k_true'][:, i], label=f'True: motor {i}', color=colors[i], linestyle=':')
+        plt.plot(history['time'], history['k_true'][:, i], label=f'Motor {i}: true', color=colors[i], linestyle=':')
     plt.axvline(x=FAILURE_TIME, color='r', linestyle='--')
-    plt.ylabel('Effectiveness (k_hat)')
+    plt.ylabel('Effectiveness (eta)')
     plt.legend()
     plt.grid(True)
     
     # Plot RPMs
-    plt.subplot(2, 1, 2)
+    plt.subplot(4, 1, 4)
     for i in range(4):
         plt.plot(history['time'], history['rpms'][:, i], label=f'Motor {i}')
     plt.axvline(x=FAILURE_TIME, color='r', linestyle='--')
@@ -176,7 +171,7 @@ def test_str_adaptation():
     plt.grid(True)
 
     plt.tight_layout()
-    plt.savefig('str_test_results_2.png')
+    plt.savefig('str_test_results_1.png')
     print("Results saved to str_test_results_1.png and str_test_results_2.png")
 
 if __name__ == "__main__":
