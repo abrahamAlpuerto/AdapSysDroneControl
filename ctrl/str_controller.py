@@ -21,6 +21,9 @@ class STRController(DSLPIDControl):
         Initialize the STR controller.
         """
         super().__init__(drone_model=drone_model, g=g)
+        # Override PWM limit cause it can get modulated later
+        self.MIN_PWM = 10000
+        self.MAX_PWM = 1000000
         
         # Store gravity
         self.G = g
@@ -47,7 +50,7 @@ class STRController(DSLPIDControl):
         
         # Warmup counter to allow filters and dynamics to settle
         self.step_counter = 0
-        self.warmup_steps = 100
+        self.warmup_steps = 50
 
     def _compute_B(self, effectiveness):
         """
@@ -58,6 +61,7 @@ class STRController(DSLPIDControl):
         kf = self.rls.kf
         km = self.rls.km
         l_const = self.rls.l_const
+
         k = effectiveness**2
         
         B = np.zeros((4, 4))
@@ -107,7 +111,7 @@ class STRController(DSLPIDControl):
         # 1. Update RLS (only after warmup)
         if observed_accel_z is not None and observed_ang_accel is not None:
             if self.step_counter > self.warmup_steps:
-                self.rls.update(observed_accel_z, observed_ang_accel, self.last_rpms, self.G)
+                self.rls.update(observed_accel_z, observed_ang_accel, self.last_rpms, cur_quat, self.G)
             self.step_counter += 1
             
         # 2. Get nominal PID output (RPMs)
@@ -142,17 +146,23 @@ class STRController(DSLPIDControl):
         #     # Increase Thrust slightly to compensate for lost motor
         #     desired_efforts[0] *= 1.1
             
-        # Apply RL-tuned multipliers on top of auto-dampening
-        desired_efforts[0] *= self.gain_multipliers[0]
-        desired_efforts[1:3] *= self.gain_multipliers[1]
-        desired_efforts[3] *= self.gain_multipliers[3]
+        # # Apply RL-tuned multipliers on top of auto-dampening
+        # desired_efforts[0] *= self.gain_multipliers[0]
+        # desired_efforts[1:3] *= self.gain_multipliers[1]
+        # desired_efforts[3] *= self.gain_multipliers[3]
+
+        # Apply multipliers to prioritize different controls
+        alpha_mix = max(0,min(1, (1-min_k) ))
+        desired_efforts[0] *= alpha_mix * 0.5 + (1-alpha_mix)
+        desired_efforts[1:3] *= alpha_mix * 7 + (1-alpha_mix)
+        desired_efforts[3] *= alpha_mix * 0.5 + (1-alpha_mix)
         
         B_hat = self._compute_B(k_hat)
         
         # Weighted Control Allocation
         # W is the output weight (how much we care about each error)
-        yaw_weight = 1 if min_k > 0.1 else 0.001 
-        W = np.diag([1, 1.2, 1.2, 1]) 
+        yaw_weight = 1 if min_k >= 0.2 else 1
+        W = np.diag([1, 1.2, 1.2, yaw_weight]) 
         W_half = np.sqrt(W)
 
         # Trying to weigh desired effort directly
@@ -163,14 +173,14 @@ class STRController(DSLPIDControl):
         # Solve [W_half*B] * rpm2 = W_half*efforts
         new_rpm2 = np.linalg.pinv(W_half @ B_hat) @ (W_half @ desired_efforts)
 
-        # -- This is a version with R --
-        # We solve: min ||W_half(B*rpm2 - efforts)||^2 + ||R_half*rpm2||^2
+        # # -- This is a version with R --
+        # # We solve: min ||W_half(B*rpm2 - efforts)||^2 + ||R_half*rpm2||^2
         # # R is the input weight (cost of using each motor)
         # # We penalize using a motor proportional to its failure
         # # If k=1, cost is low. If k=0.1, cost is very high.
         # # r_i = 0.01 + (1.0 - k_i) * 10.0
         # r_coeffs = np.clip(0.01 + (1.0 - k_hat) * 10,1,120.0)
-        # R_half = np.diag(np.sqrt(r_coeffs) * 1e-11) # Scale R to match B_hat's magnitude
+        # R_half = np.diag(np.sqrt(r_coeffs) * 1e-11 * 0.5) # Scale R to match B_hat's magnitude
         
         # # Solve using Augmented Least Squares:
         # # [W_half*B; R_half] * rpm2 = [W_half*efforts; 0]
@@ -179,10 +189,10 @@ class STRController(DSLPIDControl):
         
         # new_rpm2 = np.linalg.pinv(A_aug, rcond=1e-8) @ b_aug
 
-        # -- This is a version without W and R --
+        # # -- This is a version without W and R --
         # new_rpm2 = np.linalg.pinv(B_hat) @ desired_efforts
         
-        new_rpm2 = np.clip(new_rpm2, 0, 40000**2)
+        new_rpm2 = np.clip(new_rpm2, 0, 65535**2)
         adapted_rpms = np.sqrt(new_rpm2)
         
         # 5. Low-pass filter the output RPMs to reduce oscillations

@@ -1,4 +1,5 @@
 import numpy as np
+import pybullet as p
 
 class RLSEstimator:
     """Recursive Least Squares (RLS) estimator for drone motor effectiveness."""
@@ -60,7 +61,7 @@ class RLSEstimator:
         # Residual tracking
         self.last_residual = np.zeros(4)
 
-    def update(self, observed_accel_z, observed_ang_accel, rpms, gravity=9.81):
+    def update(self, observed_accel_z, observed_ang_accel, rpms, cur_quat, gravity=9.81):
         """
         Update the parameter estimates based on 4D observations.
         """
@@ -71,7 +72,10 @@ class RLSEstimator:
 
         # Measurement y (4, 1)
         y = np.zeros((4, 1))
-        y[0, 0] = observed_accel_z + gravity
+        # Get gravatational contribution along drone's z-axis
+        cur_rotation = np.array(p.getMatrixFromQuaternion(cur_quat)).reshape(3, 3)
+        g_body = np.dot(np.array([0,0,-gravity]), cur_rotation[:, 2])
+        y[0, 0] = observed_accel_z - g_body
         y[1:4, 0] = observed_ang_accel
         
         # Regressor Phi (4, n)
@@ -122,7 +126,7 @@ class RLSEstimator:
             # Update theta
             new_theta = self.theta + (K @ epsilon).flatten()
             
-            # Update P
+            # Update P = 1/lambda * (P - K * Phi * P)
             new_P = (1.0 / self.lam) * (self.P - K @ phi @ self.P)
             
             # 1. Stability Check: If update produces NaNs, discard it and reset P
@@ -130,7 +134,9 @@ class RLSEstimator:
                 self.P = np.eye(self.n) * 1.0 # Reset covariance
                 return self.theta
         
-            self.theta = new_theta
+            # self.theta = new_theta
+            alpha_theta = 0.5
+            self.theta = alpha_theta * new_theta + (1.0 - alpha_theta) * self.theta
             self.P = new_P
             
         except np.linalg.LinAlgError:
@@ -138,11 +144,11 @@ class RLSEstimator:
             self.P = np.eye(self.n) * 1.0
             return self.theta
         
-        # Regularization: small leak towards 1.2 for stability
-        self.theta = 0.998 * self.theta + 0.002 * 1.2
+        # Regularization: small leak towards 1.0 for stability
+        self.theta = 0.993 * self.theta + 0.007 * 1.0
         
-        # Clip theta to [0, 1.2] 
-        self.theta = np.clip(self.theta, 0.0, 1.2)
+        # Clip theta to [0, 1.0] 
+        self.theta = np.clip(self.theta, 0.0, 1.0)
         
         return self.theta
 

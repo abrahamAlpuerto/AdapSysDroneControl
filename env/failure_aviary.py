@@ -1,4 +1,5 @@
 import numpy as np
+import pybullet as p
 from gymnasium import spaces
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
@@ -129,22 +130,57 @@ class FailureAviary(CtrlAviary):
         # Update linear acceleration with LPF (Low pass filter)
         current_vel = obs[:, 10:13]
         new_accel = (current_vel - self.last_vel) / self.CTRL_TIMESTEP
-        self.accel = 0.02 * new_accel + 0.98 * self.accel # LPF
+        self.accel = 0.5 * new_accel + 0.5 * self.accel # LPF
         self.last_vel = current_vel.copy()
         
         # Convert Z-accel to body frame (simplified for vertical RLS)
-        rpy = obs[:, 7:10]
-        cos_roll = np.cos(rpy[:, 0])
-        cos_pitch = np.cos(rpy[:, 1])
-        z_accel_body = (self.accel[:, 2] + self.G) / (cos_roll * cos_pitch + 1e-6) - self.G
+        # # This is linearized to pointing directly up.
+        # # Need to account for accelerations in other axes for a better estimate.
+        # rpy = obs[:, 7:10]
+        # cos_roll = np.cos(rpy[:, 0])
+        # cos_pitch = np.cos(rpy[:, 1])
+        # z_accel_body = (self.accel[:, 2] + self.G) / (cos_roll * cos_pitch + 1e-6) - self.G
+
+        # Get z-accel in body frame with quanternion (should be more accurate than above)
+        cur_quat = obs[:, 3:7]
+        cur_rotation = np.zeros((np.shape(cur_quat)[0], 3))
+        z_accel_body = np.zeros((np.shape(cur_quat)[0],1))
+        for i in range(np.shape(cur_quat)[0]):
+            cur_rotation = np.array(p.getMatrixFromQuaternion(cur_quat[i, :])).reshape(3, 3)
+            z_accel_body[i] = np.dot(self.accel[i, :], cur_rotation[:, 2])
+        
+
+
+
         
         # Update angular acceleration with LPF
         current_ang_vel = obs[:, 13:16]
         new_ang_accel = (current_ang_vel - self.last_ang_vel) / self.CTRL_TIMESTEP
-        self.ang_accel = 0.2 * new_ang_accel + 0.8 * self.ang_accel # LPF
+        self.ang_accel = 0.2 * new_ang_accel + 0.8 * self.ang_accel # LPF to help with stability
         self.last_ang_vel = current_ang_vel.copy()
         
         # Concatenate with failure mask (NUM_DRONES, 4), z_accel (NUM_DRONES, 1) and ang_accel (NUM_DRONES, 3)
         extended_obs = np.hstack([obs, self.failure_mask, z_accel_body.reshape(-1, 1), self.ang_accel])
         
         return extended_obs
+
+    def step(self,
+             action
+             ):
+        obs, reward, terminated, truncated, info = super().step(action)
+        if self.GUI:
+            if np.any(self.failure_mask != 1.0):
+                # If failure happened, use different zoom
+                cameraDistance = 0.8
+            else:
+                cameraDistance = 1
+            p.resetDebugVisualizerCamera(cameraDistance=cameraDistance,
+                                            cameraYaw=-30,
+                                            cameraPitch=-30,
+                                            cameraTargetPosition=self.pos[0],
+                                            physicsClientId=self.CLIENT
+                                                )
+        
+
+        
+        return obs, reward, terminated, truncated, info
