@@ -30,7 +30,7 @@ def train_added_layer():
     
     custom_lr = {"learning_rate": 8e-5}
 
-    new_model = PPO.load("./models/transfer_learning_best_v2/best_model", env=env, custome_objects = custom_lr )
+    new_model = PPO.load("./models/transfer_learning_best_v4/best_model", env=env, custome_objects = custom_lr )
 
 
     frozen = 0 
@@ -58,7 +58,7 @@ def train_added_layer():
 
     evaluator = EvalCallback(
         eval_env,
-        best_model_save_path='./models/transfer_learning_best_v3/',
+        best_model_save_path='./models/transfer_learning_best_v5/',
         log_path='./logs/', 
         eval_freq=10000, 
         deterministic=True, 

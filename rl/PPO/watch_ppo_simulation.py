@@ -14,7 +14,7 @@ def watch_ppo_drone():
     try:
         # Point this to the exact name of the file/folder you saved.
         # If it is a zip, you can omit the .zip extension, SB3 finds it automatically.
-        model = PPO.load("./models/ppo_quad_adaptive_v6")
+        model = PPO.load("./models/transfer_learning_best_v5/best_model")
         print("Successfully loaded model!")
     except Exception as e:
         print(f"Error loading model: {e}")

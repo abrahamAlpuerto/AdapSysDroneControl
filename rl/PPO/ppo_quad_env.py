@@ -19,8 +19,8 @@ class PPOQuadEnv(gym.Env):
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(16,), dtype=np.float32)
         
         self.thrust_coeff = 3.16e-10 
-        self.base_rpm = 15000         
-        self.max_rpm = 25000
+        self.base_rpm = 20000         
+        self.max_rpm = 35000
         self.dt = 1.0 / 240.0
         self.target_pos = np.array([0.0, 0.0, 1.0])
         
@@ -65,7 +65,7 @@ class PPOQuadEnv(gym.Env):
         
         t = self.time_step * self.dt
         if self.fault_enabled and t >= 4.0:
-            forces[0] *= 0.8
+            forces[0] *= 0.5
             
         for i in range(4):
             p.applyExternalForce(self.quadId, i, 

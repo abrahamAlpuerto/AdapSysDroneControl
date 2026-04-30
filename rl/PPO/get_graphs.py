@@ -5,12 +5,13 @@ from ppo_quad_env import PPOQuadEnv
 
 def evaluate_and_plot():
     models_to_test = {
-        "Baseline (No Fault Training)": "./models/ppo_quad_adaptive_v6",
-        "Baseline 2nd(No Fault Training)": "./models/ppo_quad_adaptive_v6.1",
-        "Baseline 3rd(No Fault Training)": "./models/best_model",
-        "Transfer Learning Layer": "./models/transfer_learning_best/best_model",
-        "Transfer Learning Layer 2": "./models/transfer_learning_best_v2/best_model",
-        "Transfer Learning Layer 3 w/ changed reward function": "./models/transfer_learning_best_v3/best_model",
+        # "Baseline (No Fault Training)": "./models/ppo_quad_adaptive_v6",
+        # "Baseline 2nd(No Fault Training)": "./models/ppo_quad_adaptive_v6.1",
+        # "Baseline 3rd(No Fault Training)": "./models/best_model",
+        # "Transfer Learning Layer": "./models/transfer_learning_best/best_model",
+        # "Transfer Learning Layer 2": "./models/transfer_learning_best_v2/best_model",
+        "Transfer Learning Layer 4": "./models/transfer_learning_best_v4/best_model",
+        "Transfer Learning Layer 5": "./models/transfer_learning_best_v5/best_model",
     }
 
 
@@ -79,12 +80,12 @@ def evaluate_and_plot():
         
         ax2.plot(time_axis, data['roll'], label=f"{model_name} (Roll)", color=color, linewidth=2)
 
-    ax1.axvline(x=4.0, color='red', linestyle='--', label='20% Motor Fault Injected')
+    ax1.axvline(x=4.0, color='red', linestyle='--', label='80% Motor Fault Injected')
     ax1.set_ylabel("Altitude (m)")
     ax1.set_title("Altitude Recovery Comparison")
     ax1.grid(True)
     ax1.legend()
-    ax1.set_ylim([0, 1.5])
+    ax1.set_ylim([0, 2])
 
     ax2.axvline(x=4.0, color='red', linestyle='--')
     ax2.set_xlabel("Time (s)")
@@ -95,7 +96,7 @@ def evaluate_and_plot():
     
     plt.tight_layout()
     
-    plt.savefig("presentation_comparison_graph.png", dpi=300)
+    plt.savefig("20percent_comparison_graph.png", dpi=300)
 
     
     plt.show()

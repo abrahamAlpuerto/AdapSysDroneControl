@@ -7,7 +7,7 @@ from ppo_quad_env import PPOQuadEnv
 
 
 def plot_motor_effort():
-    model_path = "./models/transfer_learning_best_v3/best_model"
+    model_path = "./models/transfer_learning_best_v5/best_model"
     
 
     env = PPOQuadEnv(gui=False)
@@ -53,7 +53,7 @@ def plot_motor_effort():
     plt.plot(time_axis, motor_3, label='Motor 3', color='#2ca02c', alpha=0.8)
     plt.plot(time_axis, motor_4, label='Motor 4', color='#ff7f0e', alpha=0.8)
 
-    plt.axvline(x=4.0, color='black', linestyle='--', label='20% Power Loss Injected')
+    plt.axvline(x=4.0, color='black', linestyle='--', label='95% Power Loss Injected')
     
     plt.title("Control Output (Best Model)")
     plt.xlabel("Time (s)")
@@ -63,7 +63,7 @@ def plot_motor_effort():
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
     
-    plt.savefig("motor_effort_graph.png", dpi=300)
+    plt.savefig("5motor_effort_graph.png", dpi=300)
     plt.show()
 
 if __name__ == "__main__":

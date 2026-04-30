@@ -1,13 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from rl.DQN.dql_quad_env import DQLQuadEnv
-from rl.DQN.dql_agent import DQLAgent
+from dql_quad_env import DQLQuadEnv
+from dql_agent import DQLAgent
 import torch
 
-# --- Hyperparameters ---
 EPISODES = 1000
-MAX_STEPS = 2000 # ~4 seconds at 240Hz
-CURRICULUM_SWITCH = 3000 # Episode to introduce the 50% power loss
+MAX_STEPS = 2000 
+CURRICULUM_SWITCH = 3000 
 
 def train():
     env = DQLQuadEnv()
@@ -17,12 +16,10 @@ def train():
 
     print("--- Starting Phase 1: Normal Hover Training ---")
     for e in range(EPISODES):
-        # Curriculum Learning: Turn on the fault after 500 episodes
         fault_active = e >= CURRICULUM_SWITCH
         if e == CURRICULUM_SWITCH:
             print("\n--- Starting Phase 2: Fault Injection Training ---")
 
-        # Assume we modified env.reset() to accept this flag
         state = env.reset(fault_enabled=fault_active)
         total_reward = 0
 
@@ -48,7 +45,6 @@ def train():
         if e % 10 == 0:
             print(f"Episode: {e}/{EPISODES} | Reward: {total_reward:.2f} | Epsilon: {agent.epsilon:.2f} | Fault: {fault_active}")
 
-    # Save the trained weights
     torch.save(agent.policy_net.state_dict(), "dql_quad_weights.pth")
     print("Training Complete. Weights saved.")
     
@@ -57,11 +53,9 @@ def train():
 def evaluate_and_plot(agent, env):
     print("\n--- Running Evaluation Episode for Presentation Data ---")
     
-    # Force greedy actions (no random exploration)
     agent.epsilon = 0.0 
     state = env.reset(fault_enabled=True)
     
-    # Data Loggers
     history = {
         'time': [], 'z': [], 'rpms': [], 'roll': [], 'pitch': []
     }
@@ -71,7 +65,6 @@ def evaluate_and_plot(agent, env):
         action = agent.act(state)
         next_state, reward, done = env.step(action)
         
-        # Log data
         history['time'].append(t)
         history['z'].append(state[2])
         history['rpms'].append(env.current_rpms.copy())
@@ -83,7 +76,6 @@ def evaluate_and_plot(agent, env):
             print(f"Evaluation finished early at t={t:.2f}s")
             break
 
-    # Convert to numpy arrays for plotting
     for key in history:
         history[key] = np.array(history[key])
 
